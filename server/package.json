@@ -1,0 +1,40 @@
+{
+  "name": "@conveyor/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Conveyor API server and worker",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "dev:api": "tsx watch --env-file-if-exists=.env src/api/main.ts",
+    "dev:worker": "tsx watch --env-file-if-exists=.env src/worker/main.ts",
+    "start:api": "node dist/api/main.js",
+    "start:worker": "node dist/worker/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1146.0",
+    "@aws-sdk/client-sqs": "^3.1146.0",
+    "@prisma/client": "6.19.3",
+    "bullmq": "^5.0.0",
+    "dockerode": "^5.0.1",
+    "fastify": "^5.8.2",
+    "pino": "^10.4.0",
+    "prisma": "6.19.3",
+    "tar-stream": "^3.2.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/dockerode": "^4.0.1",
+    "@types/node": "^22.0.0",
+    "@types/tar-stream": "^3.1.5",
+    "tsx": "^4.23.15",
+    "typescript": "~5.9.3",
+    "vitest": "^5.0.3"
+  }
+}

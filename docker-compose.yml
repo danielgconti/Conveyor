@@ -1,0 +1,95 @@
+name: conveyor
+
+x-server-env: &server-env
+  DATABASE_URL: postgresql://conveyor:conveyor@postgres:5432/conveyor
+  REDIS_URL: redis://redis:6379
+  QUEUE_DRIVER: bullmq
+  STORAGE_DRIVER: local
+  ARTIFACTS_DIR: /data/artifacts
+  LOG_LEVEL: info
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: conveyor
+      POSTGRES_PASSWORD: conveyor
+      POSTGRES_DB: conveyor
+    ports: ["5432:5432"]
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conveyor"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  # HTTP API. Applies database migrations on start.
+  api:
+    build: ./server
+    environment: *server-env
+    ports: ["3000:3000"]
+    volumes: [artifacts:/data/artifacts]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/healthz').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  # Pulls job ids from the queue and runs each job in its own container.
+  #
+  # SECURITY: mounting the Docker socket gives this container full control of
+  # the host's Docker daemon (equivalent to root on the host). Acceptable for
+  # local development only. See "Security" in the README.
+  worker:
+    build: ./server
+    command: ["node", "dist/worker/main.js"]
+    user: root # needed to access the Docker socket
+    environment:
+      <<: *server-env
+      WORKER_CONCURRENCY: 2
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - artifacts:/data/artifacts
+    depends_on:
+      api: { condition: service_healthy } # api runs the migrations
+    stop_grace_period: 30s
+
+  # React dashboard, served by nginx, which also proxies /api to the API.
+  web:
+    build: ./web
+    ports: ["8080:80"]
+    depends_on: [api]
+
+  # Example workloads. These are not part of the platform: they are only
+  # declared here so `docker compose build` builds their images. Scale 0
+  # means Compose never starts them itself; the worker launches them per job.
+  example-cpu:
+    build: ./examples/cpu-worker
+    image: conveyor/cpu-worker:latest
+    scale: 0
+  example-image:
+    build: ./examples/image-worker
+    image: conveyor/image-worker:latest
+    scale: 0
+  # ~1 GB image (PyTorch). Opt in with: docker compose --profile ml build
+  example-sentiment:
+    build: ./examples/sentiment-worker
+    image: conveyor/sentiment-worker:latest
+    scale: 0
+    profiles: [ml]
+
+volumes:
+  postgres-data:
+  artifacts:

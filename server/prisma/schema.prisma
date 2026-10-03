@@ -1,0 +1,58 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+  TIMED_OUT
+  CANCELLED
+}
+
+/// One unit of work: "run this image with this input". Postgres is the source of
+/// truth for job state; the queue only carries job ids.
+model Job {
+  id     String    @id @default(uuid()) @db.Uuid
+  status JobStatus @default(QUEUED)
+
+  image      String
+  input      Json
+  /// Names of files the caller attached; stored under jobs/<id>/input/<name>.
+  inputFiles String[] @default([])
+
+  output      Json?
+  /// Names of files the container wrote to /job/output/; stored under jobs/<id>/output/<name>.
+  outputFiles String[] @default([])
+  error       String?
+  exitCode    Int?
+  stdout      String?
+  stderr      String?
+
+  // Resource limits enforced on the job container.
+  cpu            Float
+  memoryMb       Int
+  timeoutSeconds Int
+
+  retryCount Int @default(0)
+  maxRetries Int @default(0)
+
+  /// Worker currently holding the job; only that worker may heartbeat or finalize it.
+  workerId    String?
+  heartbeatAt DateTime?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  @@index([status, createdAt])
+  @@index([status, heartbeatAt])
+  @@map("jobs")
+}
